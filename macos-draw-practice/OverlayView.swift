@@ -21,24 +21,69 @@ enum DrawType {
     }
 }
 
-struct Line: Identifiable {
-    var drawPoints: [DrawPoints] = []
-    var id = UUID()
+class RenderPathState: Identifiable, ObservableObject {
+  @Published var points: [CGPoint]
+  @Published var color: Color
+  var id = UUID()
+  
+  init(points: [CGPoint], color: Color) {
+    self.points = points
+    self.color = color
+  }
+  
+  func addPoint(point: CGPoint) {
+    self.points.append(point)
+    self.objectWillChange.send()
+  }
+  
+//  func reset() {
+//    self.points = []
+//    self.objectWillChange.send()
+//  }
 }
 
-struct DrawPoints: Identifiable {
-    var points: [CGPoint]
-    var color: Color
-    var id = UUID()
+class Shape: Identifiable, ObservableObject {
+  @Published var drawPoints: [RenderPathState] = []
+  var id = UUID()
+}
+
+class OverlayViewState: ObservableObject {
+  @Published var shapes: [Shape] = []
+  @Published var tmpDrawPoints: RenderPathState = RenderPathState(points: [], color: .black)
+  
+  let lineWidth = CGFloat(10.0)
+  
+  func resetTmpDrawPoints() {
+    self.tmpDrawPoints = RenderPathState(points: [], color: .black)
+  }
+  
+  func vanishShape(id: UUID) {
+    self.shapes = self.shapes.filter { shape in shape.id != id }
+    objectWillChange.send()
+  }
+}
+
+struct RenderPathView: View {
+  
+  @ObservedObject var state: RenderPathState
+
+  var lineWidth: CGFloat
+  
+  var color: Color
+  
+  @ViewBuilder
+  var body: some View {
+    Path { path in
+        path.addLines(state.points)
+    }
+    .stroke(color, lineWidth: self.lineWidth)
+  }
 }
 
 struct OverlayView: View {
-    @State var tmpDrawPoints: DrawPoints = DrawPoints(points: [], color: .black)
-    @State var lines: [Line] = []
-    @State var startPoint: CGPoint = CGPoint.zero
-    @State var selectedColor: DrawType = .black
-    let lineWidth = CGFloat(10.0)
-
+    
+    @ObservedObject var state = OverlayViewState()
+  
     @ViewBuilder
     var body: some View {
         VStack {
@@ -47,40 +92,31 @@ struct OverlayView: View {
                 .frame(width: 300, height: 300, alignment: .center)
                 .overlay(
                   ZStack {
-                    ForEach(lines) { line in
+                    ForEach(state.shapes) { shape in
                       ZStack {
-                        ForEach(line.drawPoints) { data in
-                          Path { path in
-                              path.addLines(data.points)
-                          }
-                          .stroke(Color.red, lineWidth: lineWidth)
+                        ForEach(shape.drawPoints) { data in
+                          RenderPathView(state: data, lineWidth: state.lineWidth, color: .red)
                         }
                       }
                     }
                   }
                   .overlay(
-                    Path { path in
-                        path.addLines(self.tmpDrawPoints.points)
-                    }
-                    .stroke(self.tmpDrawPoints.color, lineWidth: lineWidth)
+                    RenderPathView(state: state.tmpDrawPoints, lineWidth: state.lineWidth, color: .black)
                   )
                 )
                 .gesture(
                     DragGesture()
                         .onChanged({ (value) in
-//                          if self.startPoint != value.startLocation || self.startPoint == .zero {
-                            self.tmpDrawPoints.points.append(value.location)
-                            self.tmpDrawPoints.color = self.selectedColor.color
-//                          }
+                          self.state.tmpDrawPoints.addPoint(point: value.location)
                         })
                         .onEnded({ (value) in
-                          self.startPoint = value.startLocation
-                          let newLine = Line(drawPoints: [self.tmpDrawPoints])
-                          self.lines.append(newLine)
-                          DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
-                            self.lines = self.lines.filter { $0.id != newLine.id }
+                          let newShape = Shape()
+                          newShape.drawPoints.append(state.tmpDrawPoints)
+                          self.state.shapes.append(newShape)
+                          self.state.resetTmpDrawPoints()
+                          DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                            self.state.vanishShape(id: newShape.id)
                           }
-                          self.tmpDrawPoints.points = []
                         })
                 )
         }
