@@ -32,7 +32,7 @@ class RenderPathState: Identifiable, ObservableObject {
       }
     }
   }
-  let lineWidth = CGFloat(10.0)
+  let lineWidth = CGFloat(7.0)
   
   var id = UUID()
     
