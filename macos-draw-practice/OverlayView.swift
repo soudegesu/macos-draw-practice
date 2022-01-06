@@ -24,12 +24,21 @@ enum DrawType {
 class RenderPathState: Identifiable, ObservableObject {
   @Published var points: [CGPoint] = []
   @Published var color: Color = .black
+  @Published var renderPath = true
+  var isFixed = false {
+    didSet {
+      DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+        self.renderPath = false
+      }
+    }
+  }
   let lineWidth = CGFloat(10.0)
   
   var id = UUID()
     
   func toFixed() {
     self.color = .red
+    self.isFixed = true
   }
   
   func addPoint(point: CGPoint) {
@@ -48,6 +57,8 @@ struct RenderPathView: View {
       path.addLines(state.points)
     }
     .stroke(state.color, lineWidth: state.lineWidth)
+    .opacity(state.renderPath ? 1.0 : 0.0)
+    .animation(.easeOut)
   }
 }
 
