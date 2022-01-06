@@ -22,61 +22,60 @@ enum DrawType {
 }
 
 class RenderPathState: Identifiable, ObservableObject {
-  @Published var points: [CGPoint]
-  @Published var color: Color
-  var id = UUID()
+  @Published var points: [CGPoint] = []
+  @Published var color: Color = .black
+  let lineWidth = CGFloat(10.0)
   
-  init(points: [CGPoint], color: Color) {
-    self.points = points
-    self.color = color
+  var id = UUID()
+    
+  func toFixed() {
+    self.color = .red
   }
   
   func addPoint(point: CGPoint) {
     self.points.append(point)
     self.objectWillChange.send()
   }
-  
-//  func reset() {
-//    self.points = []
-//    self.objectWillChange.send()
-//  }
-}
-
-class Shape: Identifiable, ObservableObject {
-  @Published var drawPoints: [RenderPathState] = []
-  var id = UUID()
-}
-
-class OverlayViewState: ObservableObject {
-  @Published var shapes: [Shape] = []
-  @Published var tmpDrawPoints: RenderPathState = RenderPathState(points: [], color: .black)
-  
-  let lineWidth = CGFloat(10.0)
-  
-  func resetTmpDrawPoints() {
-    self.tmpDrawPoints = RenderPathState(points: [], color: .black)
-  }
-  
-  func vanishShape(id: UUID) {
-    self.shapes = self.shapes.filter { shape in shape.id != id }
-    objectWillChange.send()
-  }
 }
 
 struct RenderPathView: View {
   
   @ObservedObject var state: RenderPathState
-
-  var lineWidth: CGFloat
-  
-  var color: Color
   
   @ViewBuilder
   var body: some View {
     Path { path in
-        path.addLines(state.points)
+      path.addLines(state.points)
     }
-    .stroke(color, lineWidth: self.lineWidth)
+    .stroke(state.color, lineWidth: state.lineWidth)
+  }
+}
+
+class OverlayViewState: ObservableObject {
+  var drawnPaths: [RenderPathState] = [] {
+    willSet {
+      newValue.forEach { val in val.toFixed() }
+    }
+  }
+  var drawingPath: RenderPathState = RenderPathState()
+  
+  private let clearDuration = 2.0
+  
+  func drawing(point: CGPoint) {
+    self.drawingPath.addPoint(point: point)
+  }
+  
+  func fixPath() {
+    let newFixPath = self.drawingPath
+    self.drawnPaths.append(newFixPath)
+
+    DispatchQueue.main.asyncAfter(deadline: .now() + self.clearDuration) { [weak self] in
+      self?.drawnPaths = self?.drawnPaths.filter { drawn in drawn.id != newFixPath.id } ?? []
+      self?.objectWillChange.send()
+    }
+
+    self.drawingPath = RenderPathState()
+    objectWillChange.send()
   }
 }
 
@@ -92,31 +91,19 @@ struct OverlayView: View {
                 .frame(width: 300, height: 300, alignment: .center)
                 .overlay(
                   ZStack {
-                    ForEach(state.shapes) { shape in
-                      ZStack {
-                        ForEach(shape.drawPoints) { data in
-                          RenderPathView(state: data, lineWidth: state.lineWidth, color: .red)
-                        }
-                      }
+                    ForEach(state.drawnPaths) { path in
+                      RenderPathView(state: path)
                     }
+                    RenderPathView(state: state.drawingPath)
                   }
-                  .overlay(
-                    RenderPathView(state: state.tmpDrawPoints, lineWidth: state.lineWidth, color: .black)
-                  )
                 )
                 .gesture(
                     DragGesture()
                         .onChanged({ (value) in
-                          self.state.tmpDrawPoints.addPoint(point: value.location)
+                          self.state.drawing(point: value.location)
                         })
                         .onEnded({ (value) in
-                          let newShape = Shape()
-                          newShape.drawPoints.append(state.tmpDrawPoints)
-                          self.state.shapes.append(newShape)
-                          self.state.resetTmpDrawPoints()
-                          DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                            self.state.vanishShape(id: newShape.id)
-                          }
+                          self.state.fixPath()
                         })
                 )
         }
