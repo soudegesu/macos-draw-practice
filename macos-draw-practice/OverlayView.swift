@@ -93,7 +93,7 @@ class OverlayViewState: ObservableObject {
 struct OverlayView: View {
     
     @ObservedObject var state = OverlayViewState()
-  
+    
     @ViewBuilder
     var body: some View {
         VStack {
@@ -107,6 +107,8 @@ struct OverlayView: View {
                     }
                     RenderPathView(state: state.drawingPath)
                   }
+                  .allowsHitTesting(false)
+                  .disabled(true)
                 )
                 .gesture(
                     DragGesture()
@@ -117,6 +119,12 @@ struct OverlayView: View {
                           self.state.fixPath()
                         })
                 )
-        }
+        }.onHover(perform: { hovering in
+          if hovering {
+            NSCursor.crosshair.push()
+          } else {
+            NSCursor.current.pop()
+          }
+        })
     }
 }
